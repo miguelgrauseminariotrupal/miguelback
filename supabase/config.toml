@@ -468,6 +468,12 @@ verify_jwt = false
 [functions.docente-responsable]
 verify_jwt = false
 
+[functions.exportar-lista-seccion]
+verify_jwt = false
+
+[functions.exportar-resumen-bimestre]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -89,6 +89,11 @@ tags:
     description: >
       Genera las plantillas de evaluación (filas con id_valor=NULL) para
       todas las matrículas de curso de un año lectivo.
+  - name: Exportaciones
+    description: >
+      Exportación a Excel (.xlsx). La lista de alumnos de una sección se
+      descarga directo; el resumen por bimestre se guarda en Storage (bucket
+      privado `exportaciones`) y devuelve la ruta y una URL firmada.
   - name: Chat
     description: >
       Agente conversacional (OpenAI + herramientas que consultan estas mismas
@@ -997,6 +1002,21 @@ components:
         programacion_cursos: { $ref: '#/components/schemas/DuplicarAnioResultadoBloque' }
       required: [id_anio_origen, id_anio_destino]
 
+    ExportacionResumenBimestreResponse:
+      type: object
+      properties:
+        bucket: { type: string, example: exportaciones }
+        path:
+          type: string
+          description: Ruta del archivo dentro del bucket.
+          example: resumen-bimestres/Primaria_2026_2026-10-17T15-30-00-000Z.xlsx
+        url:
+          type: string
+          description: URL firmada para descargar el archivo (caduca).
+        expires_in:
+          type: integer
+          description: Segundos de vigencia de la URL firmada.
+          example: 3600
     GenerarPlantillasNotasRequest:
       type: object
       properties:
@@ -2798,6 +2818,69 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/GenerarPlantillasNotasResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /exportar-lista-seccion/{id_seccion}:
+    get:
+      tags: [Exportaciones]
+      summary: Descargar en Excel la lista de alumnos de una sección
+      description: >
+        Genera un .xlsx con los alumnos matriculados en la sección (N°,
+        apellidos, nombres, DNI, fecha de nacimiento, fecha de matrícula),
+        ordenados alfabéticamente. Responde el archivo como descarga
+        (`Content-Disposition`); no se guarda en Storage.
+      parameters:
+        - name: id_seccion
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: estado
+          in: query
+          description: >
+            Estado de la matrícula: `true` (por defecto), `false` o `all`
+            (todas).
+          schema: { type: string, enum: ['true', 'false', all] }
+      responses:
+        '200':
+          description: Archivo Excel
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /exportar-resumen-bimestre:
+    get:
+      tags: [Exportaciones]
+      summary: Exportar a Excel el resumen de evaluación por bimestre
+      description: >
+        Llama al stored procedure `obtener_resumen_bimestre` y genera un
+        .xlsx con una pestaña por bimestre: cantidades y porcentajes por
+        grado y competencia (columnas = valores de evaluación). El archivo se
+        guarda en el bucket privado `exportaciones` de Storage y se devuelve
+        su ruta y una URL firmada con vigencia limitada.
+      parameters:
+        - name: id_anio_lectivo
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: id_nivel
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: expira
+          in: query
+          description: Vigencia de la URL firmada en segundos (60 a 86400).
+          schema: { type: integer, minimum: 60, maximum: 86400, default: 3600 }
+      responses:
+        '201':
+          description: Archivo generado y guardado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportacionResumenBimestreResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /chat:
