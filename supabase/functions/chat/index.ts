@@ -494,6 +494,32 @@ function crearTools(
         : SIN_ACCESO_SECCION,
   }),
 
+  exportar_resumen_bimestre: tool({
+    description:
+      "Genera el reporte Excel 'Sistematización de resultados de evaluación' " +
+      "de un NIVEL completo de un año lectivo: una pestaña por bimestre, con " +
+      "cantidades y porcentajes por grado y competencia, y gráficos de pastel. " +
+      "Devuelve un enlace de descarga temporal (url) y la ruta del archivo. " +
+      "Necesita id_anio_lectivo e id_nivel (de obtener_estructura_anio). Usar " +
+      "cuando pidan el reporte, el Excel o la sistematización de un nivel. " +
+      "Entrega el enlace tal cual al usuario; no lo modifiques.",
+    inputSchema: z.object({
+      id_anio_lectivo: z.number().int(),
+      id_nivel: z.number().int(),
+      expira: z.number().int().min(60).max(86400).optional()
+        .describe("Segundos de vigencia del enlace. Por defecto 3600"),
+    }),
+    execute: ({ id_anio_lectivo, id_nivel, expira }) =>
+      // El reporte abarca todas las secciones del nivel: solo para quien
+      // tiene acceso total (no se puede acotar a las secciones de un tutor).
+      alcance.todas
+        ? api("exportar-resumen-bimestre", { id_anio_lectivo, id_nivel, expira })
+        : {
+          error: "Este reporte abarca todos los grados del nivel y solo está " +
+            "disponible para administradores.",
+        },
+  }),
+
   mostrar_grafico: tool({
     description:
       "Muestra un gráfico en el chat. Usar SOLO con datos obtenidos de otras " +
@@ -715,7 +741,9 @@ Deno.serve(async (req) => {
         "en qué puedes ayudarle, usa mi_perfil. Puedes ayudar a consultar: " +
         "promedios de notas y asistencia por sección, alumnos matriculados, " +
         "estructura académica (niveles, grados, secciones), docentes responsables " +
-        "y cursos, y mostrar gráficos. Solo consultas; no modificas datos." +
+        "y cursos, mostrar gráficos y generar el reporte Excel de resultados por " +
+        "bimestre de un nivel (exportar_resumen_bimestre). Solo consultas; no " +
+        "modificas datos académicos." +
         (alcance.todas
           ? " El usuario es administrador: puede consultar todas las secciones."
           : " El usuario solo puede consultar las secciones en las que es " +
