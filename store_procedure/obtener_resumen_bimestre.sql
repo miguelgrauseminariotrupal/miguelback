@@ -1,50 +1,8 @@
--- Resumen de TODOS los bimestres de un año lectivo, para un nivel, agrupado
--- por grado: cantidad de alumnos y, por curso -> competencia, cuántos
--- alumnos obtuvieron cada valor de evaluación (conteo, no porcentaje).
---
--- Parámetros (ambos obligatorios):
---   p_id_anio_lectivo: año lectivo.
---   p_id_nivel: nivel (Primaria, Secundaria...), porque "1ro" existe en más
---               de un nivel.
---
--- Reglas:
---   * Devuelve todos los bimestres del año (por número), aunque no tengan notas.
---   * Un grado agrupa todas sus secciones. "alumnos" = alumnos distintos con
---     matrícula activa en el grado.
---   * Cursos del grado = los programados (mg_programacion_curso activos) en
---     alguna de sus secciones. Se muestran TODAS las competencias activas de
---     esos cursos, tengan o no notas.
---   * Cada competencia lista TODOS los valores activos de mg_valor_evaluacion
---     (por "orden"); cantidad 0 si nadie lo obtuvo o no hay nota. Solo cuentan
---     evaluaciones (mg_evaluacion_competencia) con valor asignado, de
---     matrícula y matrícula-curso activas.
---   * Si el año no tiene bimestres devuelve "bimestres": [].
---
--- Ejemplo de resultado:
--- {
---   "bimestres": [
---     { "id_bimestre": 1, "numero": 1, "nombre": "I Bimestre",
---       "grados": [
---         { "id_grado": 1, "grado": "1ro", "alumnos": 25,
---           "cursos": [
---             { "id_curso": 2, "curso": "Matemática",
---               "competencias": [
---                 { "id_competencia": 5, "codigo": "C1", "descripcion": "...",
---                   "valores": [
---                     { "valor": "AD", "cantidad": 5 },
---                     { "valor": "A",  "cantidad": 15 },
---                     { "valor": "B",  "cantidad": 0 } ] } ] } ] } ] } ]
--- }
-DROP FUNCTION IF EXISTS public.obtener_resumen_bimestre(bigint, integer, bigint);
-
-CREATE OR REPLACE FUNCTION public.obtener_resumen_bimestre(
-  p_id_anio_lectivo bigint,
-  p_id_nivel bigint
-)
-RETURNS jsonb
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION public.obtener_resumen_bimestre(p_id_anio_lectivo bigint, p_id_nivel bigint)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+AS $function$
   WITH bim AS (
     SELECT id_bimestre, numero, nombre
     FROM public.mg_bimestre
@@ -165,4 +123,4 @@ AS $$
       FROM bim b
     ), '[]'::jsonb)
   );
-$$;
+$function$

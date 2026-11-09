@@ -262,6 +262,17 @@ function crearTools(
   alcance: AlcanceSecciones,
   ctx: ContextoAuth,
 ) {
+  // Ids de grado (de un nivel) donde el profesor tiene secciones asignadas.
+  const gradosDelProfesor = async (secciones: number[], idNivel: number) => {
+    if (secciones.length === 0) return [] as number[];
+    const { data } = await supabase
+      .from("mg_seccion")
+      .select("id_grado, mg_grado!inner(id_nivel)")
+      .in("id_seccion", secciones)
+      .eq("mg_grado.id_nivel", idNivel);
+    return [...new Set((data ?? []).map((r) => r.id_grado as number))];
+  };
+
   const api = (
     ruta: string,
     query: Record<string, string | number | boolean | undefined>,
@@ -496,12 +507,12 @@ function crearTools(
 
   exportar_resumen_bimestre: tool({
     description:
-      "Genera el reporte Excel 'Sistematización de resultados de evaluación' " +
-      "de un NIVEL completo de un año lectivo: una pestaña por bimestre, con " +
+      "Genera el reporte Excel de INDICADORES ACADÉMICOS (resumen de resultados " +
+      "de evaluación) de un NIVEL completo de un año lectivo: una pestaña por bimestre, con " +
       "cantidades y porcentajes por grado y competencia, y gráficos de pastel. " +
       "Devuelve un enlace de descarga temporal (url) y la ruta del archivo. " +
       "Necesita id_anio_lectivo e id_nivel (de obtener_estructura_anio). Usar " +
-      "cuando pidan el reporte, el Excel o la sistematización de un nivel. " +
+      "cuando pidan el reporte, el Excel, los indicadores académicos o la sistematización de un nivel. " +
       "Entrega el enlace tal cual al usuario; no lo modifiques.",
     inputSchema: z.object({
       id_anio_lectivo: z.number().int(),
@@ -509,15 +520,100 @@ function crearTools(
       expira: z.number().int().min(60).max(86400).optional()
         .describe("Segundos de vigencia del enlace. Por defecto 3600"),
     }),
-    execute: ({ id_anio_lectivo, id_nivel, expira }) =>
-      // El reporte abarca todas las secciones del nivel: solo para quien
-      // tiene acceso total (no se puede acotar a las secciones de un tutor).
-      alcance.todas
-        ? api("exportar-resumen-bimestre", { id_anio_lectivo, id_nivel, expira })
-        : {
-          error: "Este reporte abarca todos los grados del nivel y solo está " +
-            "disponible para administradores.",
-        },
+    execute: async ({ id_anio_lectivo, id_nivel, expira }) => {
+      if (alcance.todas) {
+        return api("exportar-resumen-bimestre", { id_anio_lectivo, id_nivel, expira });
+      }
+      // Profesor: el reporte se limita a los grados de sus secciones.
+      const ids_grado = await gradosDelProfesor(alcance.secciones, id_nivel);
+      if (ids_grado.length === 0) {
+        return {
+          error: "No tienes grados asignados en ese nivel. Solo puedes " +
+            "generar indicadores de tus grados asignados.",
+        };
+      }
+      return api("exportar-resumen-bimestre", {
+        id_anio_lectivo,
+        id_nivel,
+        expira,
+        ids_grado: ids_grado.join(","),
+      });
+    },
+  }),
+
+  exportar_evolucion_bimestre: tool({
+    description:
+      "Genera el reporte Excel EVOLUTIVO de un NIVEL completo de un año " +
+      "lectivo: una pestaña por grado ('Indicadores de 1ro de Primaria'), con " +
+      "los porcentajes de cada valor (C/B/A/AD) por competencia en cada " +
+      "bimestre y un gráfico de líneas por competencia que muestra cómo " +
+      "evolucionan las notas entre bimestres. Devuelve un enlace de descarga " +
+      "temporal (url) y la ruta del archivo. Necesita id_anio_lectivo e " +
+      "id_nivel (de obtener_estructura_anio). Usar cuando pidan la evolución, " +
+      "el progreso o el avance de las notas a lo largo de los bimestres. " +
+      "Entrega el enlace tal cual al usuario; no lo modifiques.",
+    inputSchema: z.object({
+      id_anio_lectivo: z.number().int(),
+      id_nivel: z.number().int(),
+      expira: z.number().int().min(60).max(86400).optional()
+        .describe("Segundos de vigencia del enlace. Por defecto 3600"),
+    }),
+    execute: async ({ id_anio_lectivo, id_nivel, expira }) => {
+      if (alcance.todas) {
+        return api("exportar-evolucion-bimestre", { id_anio_lectivo, id_nivel, expira });
+      }
+      // Profesor: el reporte se limita a los grados de sus secciones.
+      const ids_grado = await gradosDelProfesor(alcance.secciones, id_nivel);
+      if (ids_grado.length === 0) {
+        return {
+          error: "No tienes grados asignados en ese nivel. Solo puedes " +
+            "generar indicadores de tus grados asignados.",
+        };
+      }
+      return api("exportar-evolucion-bimestre", {
+        id_anio_lectivo,
+        id_nivel,
+        expira,
+        ids_grado: ids_grado.join(","),
+      });
+    },
+  }),
+
+  exportar_resumen_asistencia: tool({
+    description:
+      "Genera el reporte Excel estadístico de ASISTENCIA de un NIVEL completo " +
+      "de un año lectivo: porcentaje y cantidad de asistencias, tardanzas, " +
+      "justificaciones y faltas por bimestre (pestaña RESUMEN) y por grado en " +
+      "cada bimestre, con gráficos. Devuelve un enlace de descarga temporal " +
+      "(url) y la ruta del archivo. Necesita id_anio_lectivo e id_nivel (de " +
+      "obtener_estructura_anio). Usar cuando pidan el reporte o Excel de " +
+      "asistencia, tardanzas o justificaciones de un nivel. Entrega el enlace " +
+      "tal cual al usuario; no lo modifiques.",
+    inputSchema: z.object({
+      id_anio_lectivo: z.number().int(),
+      id_nivel: z.number().int(),
+      expira: z.number().int().min(60).max(86400).optional()
+        .describe("Segundos de vigencia del enlace. Por defecto 3600"),
+    }),
+    execute: async ({ id_anio_lectivo, id_nivel, expira }) => {
+      if (alcance.todas) {
+        return api("exportar-resumen-asistencia", { id_anio_lectivo, id_nivel, expira });
+      }
+      // Profesor: el reporte se limita a los grados de sus secciones.
+      const ids_grado = await gradosDelProfesor(alcance.secciones, id_nivel);
+      if (ids_grado.length === 0) {
+        return {
+          error: "No tienes grados asignados en ese nivel. Solo puedes " +
+            "generar indicadores de tus grados asignados.",
+        };
+      }
+      return api("exportar-resumen-asistencia", {
+        id_anio_lectivo,
+        id_nivel,
+        expira,
+        ids_grado: ids_grado.join(","),
+      });
+    },
   }),
 
   mostrar_grafico: tool({
@@ -741,14 +837,53 @@ Deno.serve(async (req) => {
         "en qué puedes ayudarle, usa mi_perfil. Puedes ayudar a consultar: " +
         "promedios de notas y asistencia por sección, alumnos matriculados, " +
         "estructura académica (niveles, grados, secciones), docentes responsables " +
-        "y cursos, mostrar gráficos y generar el reporte Excel de resultados por " +
-        "bimestre de un nivel (exportar_resumen_bimestre). Solo consultas; no " +
+        "y cursos, mostrar gráficos y generar el reporte Excel de INDICADORES ACADÉMICOS " +
+        "(resultados de evaluación) por bimestre de un nivel (exportar_resumen_bimestre) y el reporte evolutivo " +
+        "de notas entre bimestres (exportar_evolucion_bimestre) y el reporte estadístico de asistencia de un " +
+        "nivel por bimestre (exportar_resumen_asistencia). Solo consultas; no " +
         "modificas datos académicos." +
         (alcance.todas
           ? " El usuario es administrador: puede consultar todas las secciones."
-          : " El usuario solo puede consultar las secciones en las que es " +
-            "docente responsable. Si una herramienta responde que no tiene " +
-            "acceso, explícaselo y no intentes otra vía."),
+          : " El usuario tiene perfil de profesor: SOLO puede ver información " +
+            "(alumnos, notas, asistencia, docentes y cursos) de los grados y " +
+            "secciones que tiene asignados como docente responsable. Si una " +
+            "herramienta responde que no tiene acceso, explícaselo y no intentes " +
+            "otra vía. Los indicadores académicos (Excel de resultados y " +
+            "evolución de notas) también los puede generar, igual que el reporte " +
+            "estadístico de asistencia por nivel, pero solo con sus grados asignados.") +
+        (historial.length <= 1
+          ? " PRIMER MENSAJE de la conversación: antes de responder a lo que " +
+            "pida, abre con un saludo breve y luego presenta EXACTAMENTE esta " +
+            "estructura en markdown: cada categoría como un párrafo en negrita " +
+            "terminado en dos puntos, seguido de una lista de viñetas (sin " +
+            "numerar), sin inventar nada:\n" +
+            "**Consultar estructura académica:**\n- Listar años lectivos.\n" +
+            "- Mostrar niveles (Inicial, Primaria, Secundaria).\n" +
+            "- Mostrar grados y secciones por nivel y año lectivo.\n" +
+            "**Consultar docentes responsables y cursos asignados:**\n" +
+            "- Saber qué docente dicta cada curso en una sección.\n" +
+            "**Consultar alumnos matriculados:**\n" +
+            "- Listar alumnos activos o inactivos por sección, grado, nivel y año lectivo.\n" +
+            "- Buscar alumnos por nombre, apellido o DNI.\n" +
+            "**Consultar notas:**\n- Obtener resumen de notas de secciones por bimestre.\n" +
+            "- Obtener resumen evolutivo de notas a lo largo de varios bimestres.\n" +
+            "- Mostrar gráficos para comparar o evidenciar evolución de notas.\n" +
+            "**Consultar asistencia:**\n" +
+            "- Obtener resumen de asistencia (faltas, tardanzas, justificaciones) por sección y período.\n" +
+            "- Generar reporte estadístico de asistencia por nivel.\n" +
+            "- Mostrar gráficos de asistencia.\n" +
+            "**Indicadores académicos (reportes Excel):**\n" +
+            "- Resumen de resultados de evaluación por nivel y bimestre.\n" +
+            "- Evolución de notas por nivel entre bimestres.\n" +
+            "- Resumen estadístico de asistencia por nivel y bimestre.\n" +
+            (alcance.todas
+              ? ""
+              : "Cierra aclarando que, con su perfil de profesor, solo verá " +
+                "información de sus grados asignados.\n") +
+            "Termina con: 'Si necesitas alguna consulta o reporte en particular, " +
+            "solo dime y te lo preparo.' Si su primer mensaje ya es una consulta " +
+            "concreta, responde la consulta justo después del resumen."
+          : ""),
       messages: convertToModelMessages(historial),
       tools: crearTools(authorization, alcance, ctx),
       stopWhen: stepCountIs(8),

@@ -135,6 +135,10 @@ function xmlGrafico(g: GraficoPastel): string {
       COLOR_VALOR[e] ?? COLORES_RESPALDO[i % COLORES_RESPALDO.length]
     }"/></a:solidFill></c:spPr></c:dPt>`
   ).join("");
+  // Oculta la etiqueta de valor en los puntos con 0 (siguen en la leyenda).
+  const etiquetasCero = g.valores.map((v, i) =>
+    Number(v) === 0 ? `<c:dLbl><c:idx val="${i}"/><c:delete val="1"/></c:dLbl>` : ""
+  ).join("");
   const cacheCat = `<c:strCache><c:ptCount val="${n}"/>${
     g.etiquetas.map((e, i) => `<c:pt idx="${i}"><c:v>${esc(e)}</c:v></c:pt>`)
       .join("")
@@ -143,7 +147,7 @@ function xmlGrafico(g: GraficoPastel): string {
     g.valores.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")
   }</c:numCache>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<c:chartSpace xmlns:c="${NS_C}" xmlns:a="${NS_A}" xmlns:r="${NS_R}"><c:roundedCorners val="0"/><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/><c:pieChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Cantidad</c:v></c:tx>${puntos}<c:dLbls><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/><c:showLeaderLines val="1"/></c:dLbls><c:cat><c:strRef><c:f>${
+<c:chartSpace xmlns:c="${NS_C}" xmlns:a="${NS_A}" xmlns:r="${NS_R}"><c:roundedCorners val="0"/><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/><c:pieChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Cantidad</c:v></c:tx>${puntos}<c:dLbls>${etiquetasCero}<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/><c:showLeaderLines val="1"/></c:dLbls><c:cat><c:strRef><c:f>${
     esc(g.rangoEtiquetas)
   }</c:f>${cacheCat}</c:strRef></c:cat><c:val><c:numRef><c:f>${
     esc(g.rangoValores)
@@ -251,7 +255,7 @@ const ORDEN_PLANTILLA = ["C", "B", "A", "AD"];
 function construirHoja(
   wb: ExcelJS.Workbook,
   bim: Bimestre,
-  nivel: string,
+  ambito: string,
   anio: number,
 ): HojaConGraficos {
   const ws = wb.addWorksheet(`BIMESTRE ${bim.numero}`);
@@ -308,7 +312,7 @@ function construirHoja(
   ws.mergeCells(1, 1, 1, Math.max(ultima, 8));
   const titulo = ws.getCell(1, 1);
   titulo.value =
-    `SISTEMATIZACIÓN DE RESULTADOS DE EVALUACIÓN DE LOS APRENDIZAJES DEL ${bim.nombre.toUpperCase()} - NIVEL ${nivel.toUpperCase()} ${anio}`;
+    `SISTEMATIZACIÓN DE RESULTADOS DE EVALUACIÓN DE LOS APRENDIZAJES DEL ${bim.nombre.toUpperCase()} - ${ambito} ${anio}`;
   titulo.font = { bold: true, size: 14 };
   titulo.alignment = { horizontal: "center", vertical: "middle" };
   titulo.border = BORDE;
@@ -554,6 +558,12 @@ Deno.serve(async (req) => {
     return errorResponse("'expira' debe ser un entero entre 60 y 86400", 400);
   }
 
+  // Opcional: limita el reporte a ciertos grados (ej. los del profesor).
+  const idsGradoRaw = url.searchParams.get("ids_grado");
+  const idsGrado = idsGradoRaw
+    ? idsGradoRaw.split(",").map(Number).filter((n) => Number.isInteger(n))
+    : null;
+
   try {
     const supabase = getServiceClient();
 
@@ -580,10 +590,26 @@ Deno.serve(async (req) => {
     if (bimestres.length === 0) {
       return errorResponse("El año lectivo no tiene bimestres", 404);
     }
+    if (idsGrado) {
+      for (const b of bimestres) {
+        b.grados = b.grados.filter((g) => idsGrado.includes(g.id_grado));
+      }
+      if (bimestres.every((b) => b.grados.length === 0)) {
+        return errorResponse("No hay grados para esos filtros", 404);
+      }
+    }
 
     const wb = new ExcelJS.Workbook();
+    // Título dinámico: nivel completo, o los grados del filtro (ej. profesor).
+    const nivelTxt = String(nivel.nombre).replace(/^nivel\s+/i, "").toUpperCase();
+    const gradosTxt = [
+      ...new Set(bimestres.flatMap((b) => b.grados.map((g) => g.grado))),
+    ].join(", ").toUpperCase();
+    const ambito = idsGrado && gradosTxt
+      ? `${gradosTxt} DE ${nivelTxt}`
+      : `NIVEL ${nivelTxt}`;
     const hojas = bimestres.map((b) =>
-      construirHoja(wb, b, nivel.nombre, anio)
+      construirHoja(wb, b, ambito, anio)
     );
 
     const buffer = await agregarGraficos(await wb.xlsx.writeBuffer(), hojas);
