@@ -22,9 +22,19 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method === "GET" && !idSegment) {
-      let query = supabase.from(TABLE).select("*").order(
-        "id_programacion_seccion",
-      );
+      // Solo programaciones cuyo año lectivo está activo (estado = true).
+      // Una sola consulta trae la jerarquía completa: sección -> grado ->
+      // nivel -> año lectivo, para que el cliente no pida cada uno aparte.
+      let query = supabase
+        .from(TABLE)
+        .select(
+          "*, mg_seccion!inner(id_seccion, nombre, estado, id_grado, " +
+            "mg_grado!inner(id_grado, nombre, estado, id_nivel, " +
+            "mg_nivel!inner(id_nivel, nombre, estado, id_anio_lectivo, " +
+            "mg_anio_lectivo!inner(id_anio_lectivo, anio, nombre, estado))))",
+        )
+        .eq("mg_seccion.mg_grado.mg_nivel.mg_anio_lectivo.estado", true)
+        .order("id_programacion_seccion");
 
       const idSeccion = url.searchParams.get("id_seccion");
       if (idSeccion !== null) {
@@ -49,7 +59,16 @@ Deno.serve(async (req) => {
 
       const { data, error } = await query;
       if (error) return errorResponse(error.message, 500);
-      return jsonResponse(data);
+      // Se aplana la jerarquía anidada: se conservan las columnas originales y
+      // se agregan `seccion`, `grado`, `nivel` y `anio_lectivo`.
+      // deno-lint-ignore no-explicit-any
+      const filas = (data ?? []).map(({ mg_seccion, ...fila }: any) => {
+        const { mg_grado, ...seccion } = mg_seccion;
+        const { mg_nivel, ...grado } = mg_grado;
+        const { mg_anio_lectivo, ...nivel } = mg_nivel;
+        return { ...fila, seccion, grado, nivel, anio_lectivo: mg_anio_lectivo };
+      });
+      return jsonResponse(filas);
     }
 
     if (req.method === "GET" && idSegment) {

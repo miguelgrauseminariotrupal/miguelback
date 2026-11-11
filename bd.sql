@@ -10,7 +10,7 @@ CREATE TABLE public.mg_anio_lectivo (
 );
 CREATE TABLE public.mg_nivel (
   id_nivel bigint NOT NULL DEFAULT nextval('mg_nivel_id_nivel_seq'::regclass),
-  id_anio_lectivo bigint NOT NULL,
+  id_anio_lectivo bigint,
   nombre character varying NOT NULL,
   estado boolean NOT NULL DEFAULT true,
   CONSTRAINT mg_nivel_pkey PRIMARY KEY (id_nivel),
@@ -73,7 +73,7 @@ CREATE TABLE public.mg_curso (
   id_curso bigint NOT NULL DEFAULT nextval('mg_curso_id_curso_seq'::regclass),
   nombre character varying NOT NULL,
   estado boolean NOT NULL DEFAULT true,
-  id_anio_lectivo bigint NOT NULL,
+  id_anio_lectivo bigint,
   CONSTRAINT mg_curso_pkey PRIMARY KEY (id_curso),
   CONSTRAINT mg_curso_id_anio_lectivo_fkey FOREIGN KEY (id_anio_lectivo) REFERENCES public.mg_anio_lectivo(id_anio_lectivo)
 );
@@ -195,38 +195,6 @@ CREATE TABLE public.mg_rol_permiso (
   CONSTRAINT fk_mg_rol_permiso_rol FOREIGN KEY (id_rol) REFERENCES public.mg_rol(id_rol),
   CONSTRAINT fk_mg_rol_permiso_permiso FOREIGN KEY (id_permiso) REFERENCES public.mg_permiso(id_permiso)
 );
-CREATE TABLE public.mg_conversacion_agente (
-  id_conversacion bigint NOT NULL DEFAULT nextval('mg_conversacion_agente_id_conversacion_seq'::regclass),
-  id_usuario bigint NOT NULL,
-  titulo character varying,
-  fecha_creacion timestamp with time zone NOT NULL DEFAULT now(),
-  fecha_actualizacion timestamp with time zone NOT NULL DEFAULT now(),
-  estado boolean NOT NULL DEFAULT true,
-  CONSTRAINT mg_conversacion_agente_pkey PRIMARY KEY (id_conversacion),
-  CONSTRAINT fk_mg_conversacion_usuario FOREIGN KEY (id_usuario) REFERENCES public.mg_usuario(id_usuario)
-);
-CREATE TABLE public.mg_mensaje_agente (
-  id_mensaje bigint NOT NULL DEFAULT nextval('mg_mensaje_agente_id_mensaje_seq'::regclass),
-  id_conversacion bigint NOT NULL,
-  rol_mensaje character varying NOT NULL CHECK (rol_mensaje::text = ANY (ARRAY['USER'::character varying, 'ASSISTANT'::character varying, 'TOOL'::character varying]::text[])),
-  contenido text NOT NULL,
-  fecha_creacion timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT mg_mensaje_agente_pkey PRIMARY KEY (id_mensaje),
-  CONSTRAINT fk_mg_mensaje_conversacion FOREIGN KEY (id_conversacion) REFERENCES public.mg_conversacion_agente(id_conversacion)
-);
-CREATE TABLE public.mg_auditoria_accion (
-  id_auditoria bigint NOT NULL DEFAULT nextval('mg_auditoria_accion_id_auditoria_seq'::regclass),
-  id_usuario bigint NOT NULL,
-  modulo character varying NOT NULL,
-  accion character varying NOT NULL,
-  entidad character varying,
-  id_entidad bigint,
-  origen character varying NOT NULL DEFAULT 'WEB'::character varying CHECK (origen::text = ANY (ARRAY['WEB'::character varying, 'AGENTE'::character varying, 'EXCEL'::character varying, 'API'::character varying]::text[])),
-  detalle jsonb,
-  fecha_creacion timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT mg_auditoria_accion_pkey PRIMARY KEY (id_auditoria),
-  CONSTRAINT fk_mg_auditoria_usuario FOREIGN KEY (id_usuario) REFERENCES public.mg_usuario(id_usuario)
-);
 CREATE TABLE public.mg_aprendizaje (
   id_aprendizaje bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   estado boolean,
@@ -237,7 +205,7 @@ CREATE TABLE public.mg_aprendizaje (
 );
 CREATE TABLE public.mg_bimestre (
   id_bimestre bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  id_anio_lectivo bigint NOT NULL,
+  id_anio_lectivo bigint,
   numero integer NOT NULL,
   nombre character varying NOT NULL,
   fecha_inicio date,
@@ -299,9 +267,7 @@ CREATE TABLE public.mensajes (
 );
 CREATE TABLE public.metricas_consulta (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  conversacion_id uuid NOT NULL,
-  mensaje_id text,
-  usuario_id uuid NOT NULL,
+  mensaje_id text NOT NULL,
   tipo_indicador text CHECK (tipo_indicador = ANY (ARRAY['notas'::text, 'asistencia'::text, 'integrado'::text, 'otro'::text])),
   herramientas ARRAY,
   tokens_entrada integer,
@@ -310,7 +276,5 @@ CREATE TABLE public.metricas_consulta (
   error text,
   creado_en timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT metricas_consulta_pkey PRIMARY KEY (id),
-  CONSTRAINT metricas_consulta_conversacion_id_fkey FOREIGN KEY (conversacion_id) REFERENCES public.conversaciones(id),
-  CONSTRAINT metricas_consulta_mensaje_id_fkey FOREIGN KEY (mensaje_id) REFERENCES public.mensajes(id),
-  CONSTRAINT metricas_consulta_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id)
+  CONSTRAINT metricas_consulta_mensaje_id_fkey FOREIGN KEY (mensaje_id) REFERENCES public.mensajes(id)
 );
