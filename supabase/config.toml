@@ -471,6 +471,9 @@ verify_jwt = false
 [functions.exportar-lista-seccion]
 verify_jwt = false
 
+[functions.exportar-reporte-asistencia]
+verify_jwt = false
+
 [functions.exportar-resumen-bimestre]
 verify_jwt = false
 

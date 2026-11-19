@@ -464,6 +464,23 @@ Deno.serve(async (req) => {
     ? idsGradoRaw.split(",").map(Number).filter((n) => Number.isInteger(n))
     : null;
 
+  // Opcional: bimestres a comparar (ej. bimestres=1,2,3).
+  const bimsRaw = url.searchParams.get("bimestres");
+  const numsBimestre = bimsRaw ? bimsRaw.split(",").map(Number) : null;
+  if (numsBimestre && !numsBimestre.every((n) => Number.isInteger(n))) {
+    return errorResponse("'bimestres' debe ser una lista de enteros", 400);
+  }
+
+  // Opcional: deja solo ciertas competencias (perfil profesor). ids_competencia=1,2,3
+  const idsCompRaw = url.searchParams.get("ids_competencia") ??
+    url.searchParams.get("id_competencia");
+  const idsCompetencia = idsCompRaw
+    ? idsCompRaw.split(",").map(Number)
+    : null;
+  if (idsCompetencia && !idsCompetencia.every((n) => Number.isInteger(n))) {
+    return errorResponse("'ids_competencia' debe ser una lista de enteros", 400);
+  }
+
   try {
     const supabase = getServiceClient();
 
@@ -486,7 +503,10 @@ Deno.serve(async (req) => {
     });
     if (error) return errorResponse(error.message, 500);
 
-    const bimestres = (data?.bimestres ?? []) as Bimestre[];
+    let bimestres = (data?.bimestres ?? []) as Bimestre[];
+    if (numsBimestre) {
+      bimestres = bimestres.filter((b) => numsBimestre.includes(b.numero));
+    }
     if (bimestres.length === 0) {
       return errorResponse("El año lectivo no tiene bimestres", 404);
     }
@@ -495,6 +515,26 @@ Deno.serve(async (req) => {
       : bimestres[0].grados;
     if (grados.length === 0) {
       return errorResponse("El nivel no tiene grados", 404);
+    }
+
+    if (idsCompetencia) {
+      for (const b of bimestres) {
+        for (const g of b.grados) {
+          g.cursos = g.cursos
+            .map((c) => ({
+              ...c,
+              competencias: c.competencias.filter((k) =>
+                idsCompetencia.includes(k.id_competencia)
+              ),
+            }))
+            .filter((c) => c.competencias.length > 0);
+        }
+      }
+      if (
+        bimestres.every((b) => b.grados.every((g) => g.cursos.length === 0))
+      ) {
+        return errorResponse("No hay datos para esas competencias", 404);
+      }
     }
 
     const wb = new ExcelJS.Workbook();

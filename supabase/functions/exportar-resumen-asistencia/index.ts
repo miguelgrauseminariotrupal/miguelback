@@ -415,6 +415,13 @@ Deno.serve(async (req) => {
   }
 
   // Opcional: limita el reporte a ciertos grados (ej. los del profesor).
+  // Opcional: solo un bimestre (perfil profesor).
+  const bimRaw = url.searchParams.get("bimestre");
+  const numBimestre = bimRaw ? Number(bimRaw) : null;
+  if (bimRaw && !Number.isInteger(numBimestre)) {
+    return errorResponse("'bimestre' debe ser un entero", 400);
+  }
+
   const idsGradoRaw = url.searchParams.get("ids_grado");
   const idsGrado = idsGradoRaw
     ? idsGradoRaw.split(",").map(Number).filter((n) => Number.isInteger(n))
@@ -443,7 +450,13 @@ Deno.serve(async (req) => {
     if (error) return errorResponse(error.message, 500);
 
     const tipos = (data?.tipos ?? []) as Tipo[];
-    const bimestres = (data?.bimestres ?? []) as BimestreAsist[];
+    let bimestres = (data?.bimestres ?? []) as BimestreAsist[];
+    if (numBimestre !== null) {
+      bimestres = bimestres.filter((b) => b.numero === numBimestre);
+      if (bimestres.length === 0) {
+        return errorResponse("No existe ese bimestre", 404);
+      }
+    }
     if (idsGrado) {
       for (const b of bimestres) {
         b.grados = b.grados.filter((g) => idsGrado.includes(g.id_grado));

@@ -75,7 +75,7 @@ export function exigirRol(
 }
 
 /** Roles con acceso a todas las secciones. El resto solo ve las suyas. */
-export const ROLES_ACCESO_TOTAL = ["ADMIN"] as const;
+export const ROLES_ACCESO_TOTAL = ["ADMIN", "DIRECTOR"] as const;
 
 export type AlcanceSecciones =
   | { todas: true }

@@ -564,6 +564,23 @@ Deno.serve(async (req) => {
     ? idsGradoRaw.split(",").map(Number).filter((n) => Number.isInteger(n))
     : null;
 
+  // Opcional: deja solo un bimestre (perfil profesor).
+  const bimRaw = url.searchParams.get("bimestre");
+  const numBimestre = bimRaw ? Number(bimRaw) : null;
+  if (bimRaw && !Number.isInteger(numBimestre)) {
+    return errorResponse("'bimestre' debe ser un entero", 400);
+  }
+
+  // Opcional: deja solo ciertas competencias (perfil profesor). ids_competencia=1,2,3
+  const idsCompRaw = url.searchParams.get("ids_competencia") ??
+    url.searchParams.get("id_competencia");
+  const idsCompetencia = idsCompRaw
+    ? idsCompRaw.split(",").map(Number)
+    : null;
+  if (idsCompetencia && !idsCompetencia.every((n) => Number.isInteger(n))) {
+    return errorResponse("'ids_competencia' debe ser una lista de enteros", 400);
+  }
+
   try {
     const supabase = getServiceClient();
 
@@ -586,9 +603,15 @@ Deno.serve(async (req) => {
     });
     if (error) return errorResponse(error.message, 500);
 
-    const bimestres = (data?.bimestres ?? []) as Bimestre[];
+    let bimestres = (data?.bimestres ?? []) as Bimestre[];
     if (bimestres.length === 0) {
       return errorResponse("El año lectivo no tiene bimestres", 404);
+    }
+    if (numBimestre !== null) {
+      bimestres = bimestres.filter((b) => b.numero === numBimestre);
+      if (bimestres.length === 0) {
+        return errorResponse("No existe ese bimestre", 404);
+      }
     }
     if (idsGrado) {
       for (const b of bimestres) {
@@ -596,6 +619,26 @@ Deno.serve(async (req) => {
       }
       if (bimestres.every((b) => b.grados.length === 0)) {
         return errorResponse("No hay grados para esos filtros", 404);
+      }
+    }
+
+    if (idsCompetencia) {
+      for (const b of bimestres) {
+        for (const g of b.grados) {
+          g.cursos = g.cursos
+            .map((c) => ({
+              ...c,
+              competencias: c.competencias.filter((k) =>
+                idsCompetencia.includes(k.id_competencia)
+              ),
+            }))
+            .filter((c) => c.competencias.length > 0);
+        }
+      }
+      if (
+        bimestres.every((b) => b.grados.every((g) => g.cursos.length === 0))
+      ) {
+        return errorResponse("No hay datos para esas competencias", 404);
       }
     }
 
